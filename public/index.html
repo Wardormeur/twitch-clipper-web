@@ -74,21 +74,27 @@
             async function concat(clips) {
                 const ffmpeg = FFmpeg.createFFmpeg({ log: true });
                 await ffmpeg.load();
-                let src = clips[1].src
-                let file = await FFmpeg.fetchFile(src)
-                ffmpeg.FS('writeFile', 'test.mp4', file);
 
-                src = clips[2].src
-                file = await FFmpeg.fetchFile(src)
-                ffmpeg.FS('writeFile', 'test2.mp4', file);
-
+                clips = clips.slice(1, 3)
+                let sources = []
+                let concatened = ''
                 ffmpeg.FS('writeFile', 'font.woff2', await FFmpeg.fetchFile('https://fonts.gstatic.com/s/opensans/v27/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0B4gaVI.woff2'))
-                ffmpeg.setProgress(({ ratio }) => {
-                    console.log('kekw', ratio);
-                });
                 // await ffmpeg.run('-i', 'test.mp4', '-vf', "drawtext=fontfile=/font.woff2:text='Stack Overflow':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=(h-text_h)/2", '-codec:a', 'copy', 'out.mp4');
-                await ffmpeg.run('-i', 'test.mp4', '-i', 'test2.mp4',
-                '-filter_complex', '[0:v] [0:a] [1:v] [1:a] concat=n=2:v=1:a=1 [v] [a]', '-map' ,'[v]' ,'-map', '[a]', 'out.mp4');
+                for(const [i, c] of clips.entries()) {  
+                    file = await FFmpeg.fetchFile(c.src)
+                    await ffmpeg.FS('writeFile', `source${i}.mp4`, file);
+                    sources.push('-i')
+                    sources.push(`source${i}.mp4`)
+                    concatened += `[${i}:v] [${i}:a] `
+                }
+                console.log(sources)
+                concatened += `concat=n=${clips.length}:v=1:a=1 [v] [a]`
+                sources.push('-filter_complex', concatened)
+                let command = sources.concat(['-map' ,'[v]' ,'-map', '[a]', 'out.mp4'])
+                console.log(command)
+                await ffmpeg.run(...command)
+                // await ffmpeg.run('-i', 'test.mp4', '-i', 'test2.mp4',
+                // '-filter_complex', '[0:v] [0:a] [1:v] [1:a] concat=n=2:v=1:a=1 [v] [a]', '-map' ,'[v]' ,'-map', '[a]', 'out.mp4');
                 
                 const vid = document.querySelector('#video')
                 let blob = await ffmpeg.FS('readFile', 'out.mp4')
