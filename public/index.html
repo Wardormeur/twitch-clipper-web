@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online twitch clipper</title>
+    <script src="scripts/ffmpeg/ffmpeg/dist/ffmpeg.min.js"></script>
+    <script src="scripts/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <a href="https://id.twitch.tv/oauth2/authorize?client_id=lykfmi4xw0vec3utrdqvhdimkmz0ci&redirect_uri=http://localhost:8080&response_type=token+id_token&scope=openid">Connect</a>
+    <video id="video"></video>
+    <div id="thumbs"></div>
+    <script>
+        (async () => {
+            const token = getToken()
+            if (token) {
+                let clips = await getClips(token[1])
+                clips = prepareClips(clips.data)
+                generateThumbs(clips)
+                concat(clips)
+            }
+            function getToken() {
+                const loc = new URL(document.location);
+                let params = loc.hash.replace('#', '').split('&');
+                params = params.map((string) => string.split('='));
+                return params.find((p) => p[0] == 'access_token');
+            }
+
+            function prepareClips(clips) {
+                return clips.map((c => {
+                    let splits = c.thumbnail_url.split('/');
+                    let id = splits[splits.length-1];
+                    c.numId = id.split('-preview')[0];
+                    c.src = `/proxy/${c.numId}.mp4`
+                    // c.src = `https://clips-media-assets2.twitch.tv/${c.numId}.mp4`
+                    return c;
+                }))
+            }
+
+            function generateThumbs(clips) {
+                let thumbs = document.querySelector('#thumbs')
+                clips.forEach((c => {
+                    video = document.createElement('video')
+                    video.src = c.src
+                    video.type= "video/mp4"
+                    video.controls = true
+                    video.height = 250
+                    video.preload = "auto"
+                    video.poster = c.thumbnail_url
+                    thumbs.appendChild(video)
+                }))
+            }
+            async function getClips(token) {
+                var d = new Date();
+                d.setMonth(d.getMonth() - 3);
+                const res = await axios.get(
+                    `https://api.twitch.tv/helix/clips`,
+                    {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Client-ID': 'lykfmi4xw0vec3utrdqvhdimkmz0ci',
+                    },
+                    params: {
+                        broadcaster_id: 55434616,
+                        // started_at: parseInt(new Date().getTime()/1000),
+                        // ended_at: parseInt(d.getTime()/1000),
+                        first: 10
+                    },
+                });
+                return res.data;
+            }
+            async function concat(clips) {
+                const ffmpeg = FFmpeg.createFFmpeg({ log: true });
+                await ffmpeg.load();
+                let src = clips[1].src
+                let file = await FFmpeg.fetchFile(src)
+                ffmpeg.FS('writeFile', 'test.mp4', file);
+
+                src = clips[2].src
+                file = await FFmpeg.fetchFile(src)
+                ffmpeg.FS('writeFile', 'test2.mp4', file);
+
+                ffmpeg.FS('writeFile', 'font.woff2', await FFmpeg.fetchFile('https://fonts.gstatic.com/s/opensans/v27/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0B4gaVI.woff2'))
+                ffmpeg.setProgress(({ ratio }) => {
+                    console.log('kekw', ratio);
+                });
+                // await ffmpeg.run('-i', 'test.mp4', '-vf', "drawtext=fontfile=/font.woff2:text='Stack Overflow':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=(h-text_h)/2", '-codec:a', 'copy', 'out.mp4');
+                await ffmpeg.run('-i', 'test.mp4', '-i', 'test2.mp4',
+                '-filter_complex', '[0:v] [0:a] [1:v] [1:a] concat=n=2:v=1:a=1 [v] [a]', '-map' ,'[v]' ,'-map', '[a]', 'out.mp4');
+                
+                const vid = document.querySelector('#video')
+                let blob = await ffmpeg.FS('readFile', 'out.mp4')
+                blob = new Blob([blob.buffer], { type:'video/mp4' })
+                vid.src = window.URL.createObjectURL(blob);
+                vid.height = 250
+                console.log('done')
+                ffmpeg.exit()
+            }
+        })()
+    </script>
+</body>
+</html>
