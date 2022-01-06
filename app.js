@@ -15,6 +15,10 @@ app.use(express.static('public'));
 
 app.use("/scripts/ffmpeg", express.static('node_modules/@ffmpeg'));
 app.use("/scripts/axios", express.static('node_modules/axios'));
+app.use("/scripts/script.js", express.static('public/script.js'));
+app.use("/tailwind.min.css", express.static('public/tailwind.min.css'));
+app.use("/style.css", express.static('public/style.css'));
+
 
 app.get('/proxy/:clipId.mp4', async function(req, res) {
   const { clipId } = req.params;
