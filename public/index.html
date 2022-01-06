@@ -7,20 +7,49 @@
     <title>Online twitch clipper</title>
     <script src="scripts/ffmpeg/ffmpeg/dist/ffmpeg.min.js"></script>
     <script src="scripts/axios/dist/axios.min.js"></script>
+    <style>
+        #progress {
+            width: 0%;
+            height: 1em;
+            background-color: yellowgreen;
+        }
+    </style>
 </head>
 <body>
     <a href="https://id.twitch.tv/oauth2/authorize?client_id=lykfmi4xw0vec3utrdqvhdimkmz0ci&redirect_uri=http://localhost:8080&response_type=token+id_token&scope=openid">Connect</a>
+    <div id="progress"></div>
     <video id="video"></video>
     <div id="thumbs"></div>
+    <button onclick="showMore()">More clips</button>
+    <button onclick="concat()">Generate</button>
     <script>
+        let token;
+        let pagination;
+        let clips;
+        const ffmpeg = FFmpeg.createFFmpeg({ log: true });
+
+        window.onbeforeunload = function () {
+            if (ffmpeg) ffmpeg.exit()
+        };
+
         (async () => {
-            const token = getToken()
+            [key, token] = getToken()
             if (token) {
-                let clips = await getClips(token[1])
-                clips = prepareClips(clips.data)
+                let res = await getClips()
+                clips = prepareClips(res.data)
+                pagination = res.pagination
                 generateThumbs(clips)
-                concat(clips)
+            }   
+        })()
+
+            async function showMore() {
+                let res = await getClips()
+                let _clips = prepareClips(res.data)
+                pagination = res.pagination
+                generateThumbs(_clips)
+                clips = clips.concat(_clips);
             }
+
             function getToken() {
                 const loc = new URL(document.location);
                 let params = loc.hash.replace('#', '').split('&');
@@ -29,14 +58,16 @@
             }
 
             function prepareClips(clips) {
-                return clips.map((c => {
+                clips = clips.map((c => {
                     let splits = c.thumbnail_url.split('/');
                     let id = splits[splits.length-1];
                     c.numId = id.split('-preview')[0];
                     c.src = `/proxy/${c.numId}.mp4`
-                    // c.src = `https://clips-media-assets2.twitch.tv/${c.numId}.mp4`
+                    c.proxied_thumbnail_url = `/proxy/${c.numId}.jpg`
                     return c;
                 }))
+                clips.sort((c1, c2) => new Date(c1.created_at) <= new Date(c2.created_at))
+                return clips
             }
 
             function generateThumbs(clips) {
@@ -48,13 +79,16 @@
                     video.controls = true
                     video.height = 250
                     video.preload = "auto"
-                    video.poster = c.thumbnail_url
+                    video.poster = c.proxied_thumbnail_url
                     thumbs.appendChild(video)
                 }))
             }
-            async function getClips(token) {
-                var d = new Date();
-                d.setMonth(d.getMonth() - 3);
+            async function getClips() {
+                const params = {
+                    broadcaster_id: 55434616,
+                    first: 10
+                };
+                if (pagination) params.after = pagination.cursor;
                 const res = await axios.get(
                     `https://api.twitch.tv/helix/clips`,
                     {
@@ -62,49 +96,50 @@
                         Authorization: `Bearer ${token}`,
                         'Client-ID': 'lykfmi4xw0vec3utrdqvhdimkmz0ci',
                     },
-                    params: {
-                        broadcaster_id: 55434616,
-                        // started_at: parseInt(new Date().getTime()/1000),
-                        // ended_at: parseInt(d.getTime()/1000),
-                        first: 10
-                    },
+                    params,
                 });
                 return res.data;
             }
-            async function concat(clips) {
-                const ffmpeg = FFmpeg.createFFmpeg({ log: true });
+            async function concat() {
                 await ffmpeg.load();
 
-                clips = clips.slice(1, 3)
+                let command = []
                 let sources = []
                 let concatened = ''
+                let scaled = []
+                const resolution = '320:180'; // '1920:1080'
                 ffmpeg.FS('writeFile', 'font.woff2', await FFmpeg.fetchFile('https://fonts.gstatic.com/s/opensans/v27/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0B4gaVI.woff2'))
                 // await ffmpeg.run('-i', 'test.mp4', '-vf', "drawtext=fontfile=/font.woff2:text='Stack Overflow':fontcolor=white:fontsize=24:box=1:boxcolor=black@0.5:boxborderw=5:x=(w-text_w)/2:y=(h-text_h)/2", '-codec:a', 'copy', 'out.mp4');
-                for(const [i, c] of clips.entries()) {  
+                console.log(clips)
+                const progress = document.querySelector('#progress')
+                ffmpeg.setProgress(({ ratio }) => {
+                    console.log(`${parseInt(ratio)}%`)
+                    progress.style.width = `${parseInt(ratio)}%`;
+                });
+                for(const [i, c] of clips.entries()) { 
+                    console.log('handling file', i)
                     file = await FFmpeg.fetchFile(c.src)
                     await ffmpeg.FS('writeFile', `source${i}.mp4`, file);
                     sources.push('-i')
                     sources.push(`source${i}.mp4`)
-                    concatened += `[${i}:v] [${i}:a] `
+                    scaled.push(`[${i}:v]scale=${resolution},setsar=sar=1[scaledv${i}]`) 
+                    concatened += `[scaledv${i}] [${i}:a] `
                 }
-                console.log(sources)
                 concatened += `concat=n=${clips.length}:v=1:a=1 [v] [a]`
-                sources.push('-filter_complex', concatened)
-                let command = sources.concat(['-map' ,'[v]' ,'-map', '[a]', 'out.mp4'])
+                command.push(...sources, '-filter_complex', `${scaled.join(';')};${concatened}`, '-map' ,'[v]' ,'-map', '[a]', 'out.mp4')
                 console.log(command)
                 await ffmpeg.run(...command)
-                // await ffmpeg.run('-i', 'test.mp4', '-i', 'test2.mp4',
-                // '-filter_complex', '[0:v] [0:a] [1:v] [1:a] concat=n=2:v=1:a=1 [v] [a]', '-map' ,'[v]' ,'-map', '[a]', 'out.mp4');
                 
                 const vid = document.querySelector('#video')
                 let blob = await ffmpeg.FS('readFile', 'out.mp4')
                 blob = new Blob([blob.buffer], { type:'video/mp4' })
                 vid.src = window.URL.createObjectURL(blob);
                 vid.height = 250
-                console.log('done')
+                video.type= "video/mp4"
+                video.controls = true
+                video.poster = clips[0].thumbnail_url
                 ffmpeg.exit()
             }
-        })()
     </script>
 </body>
 </html>

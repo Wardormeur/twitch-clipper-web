@@ -17,18 +17,35 @@ app.use("/scripts/ffmpeg", express.static('node_modules/@ffmpeg'));
 app.use("/scripts/axios", express.static('node_modules/axios'));
 
 app.get('/proxy/:clipId.mp4', async function(req, res) {
-    const { clipId } = req.params;
-    get(`https://clips-media-assets2.twitch.tv/${clipId}.mp4`, (response) => {
-        pipeline(response, res, (err) => {
-            if (err) {
-              console.error('Pipeline failed.', err);
-            } else {
-              console.log('Pipeline succeeded.');
-            }
-          });
-        response.on('close', () => res.end())
+  const { clipId } = req.params;
+  get(`https://clips-media-assets2.twitch.tv/${clipId}.mp4`, (response) => {
+    response.pipe(res, { end: false });
+    response.on('error', (e) => {
+      console.error('Pipeline failed.', err);
+      res.end()
+    })
+    response.on('end', () => {
+      res.end();
     });
+  });
 });
+
+app.get('/proxy/:clipId.jpg', async function(req, res) {
+  const { clipId } = req.params
+  get(`https://clips-media-assets2.twitch.tv/${clipId}-preview-480x272.jpg`, (response) => {
+    res.type('jpg')
+    response.pipe(res, { end: false });
+    response.on('error', (e) => {
+      console.error('Pipeline failed.', err);
+      res.end()
+    })
+    response.on('end', () => {
+      res.end();
+    });
+  });
+});
+
+
 
 const PORT = process.env.PORT || 8080;
 
