@@ -1,6 +1,7 @@
 let token;
         let pagination;
         let clips = [];
+        let user;
         const ffmpeg = FFmpeg.createFFmpeg({ log: false });
 
         window.onbeforeunload = function () {
@@ -10,6 +11,9 @@ let token;
         (async () => {
             [key, token] = getToken()
             if (token) {
+                const { sub } = await getUser()
+                user = sub
+                console.log(user)
                 hideConnect()
                 showMore()
             }
@@ -34,6 +38,17 @@ let token;
                 return params.find((p) => p[0] == 'access_token');
             }
 
+            async function getUser() {
+                const res = await axios.get(
+                    `https://id.twitch.tv/oauth2/userinfo`,
+                    {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                });
+                return res.data;
+            }
+
             function prepareClips(clips) {
                 clips = clips.map((c => {
                     let splits = c.thumbnail_url.split('/');
@@ -49,20 +64,34 @@ let token;
 
             function generateThumbs(clips) {
                 let thumbs = document.querySelector('#thumbs')
-                clips.forEach((c => {
+                clips.forEach(((c, i) => {
+                    container = document.createElement('div')
                     video = document.createElement('video')
+                    input = document.createElement('input')
+                    label = document.createElement('label')
+                    label.textContent = c.title
+                    label.for=""
+                    input.name = `video[]`
+                    input.value = i
+                    input.checked = true
+                    input.type = "checkbox"
+                    
                     video.src = c.src
                     video.type= "video/mp4"
                     video.controls = true
                     video.height = 250
                     video.preload = "auto"
                     video.poster = c.proxied_thumbnail_url
-                    thumbs.appendChild(video)
+
+                    container.appendChild(video)
+                    label.appendChild(input)
+                    container.appendChild(label)
+                    thumbs.appendChild(container)
                 }))
             }
             async function getClips() {
                 const params = {
-                    broadcaster_id: 55434616,
+                    broadcaster_id: user,
                     first: 10
                 };
                 if (pagination) params.after = pagination.cursor;
@@ -86,6 +115,9 @@ let token;
                 let concatened = ''
                 let scaled = []
                 let duration = 0
+                let selectedClips = document.querySelectorAll('input:checked');
+                const selectedClipsIds = [...selectedClips].map((c) => c.value)
+                selectedClips = clips.filter((c, i) => selectedClipsIds.includes(i.toString()))
                 const fps = 30
                 const resolution = '320:180'; // '1920:1080'
                 ffmpeg.FS('writeFile', 'font.woff2', await FFmpeg.fetchFile('https://fonts.gstatic.com/s/opensans/v27/memSYaGs126MiZpBA-UvWbX2vVnXBbObj2OVZyOOSr4dVJWUgsjZ0B4gaVI.woff2'))
@@ -110,7 +142,7 @@ let token;
                     if (status) progress.style.width = `${status}%`;
                     estimation.textContent = state;
                 });
-                for(const [i, c] of clips.entries()) { 
+                for(const [i, c] of selectedClips.entries()) { 
                     console.log('handling file', i)
                     file = await FFmpeg.fetchFile(c.src)
                     state = `Loading file ${i}`
@@ -125,7 +157,7 @@ let token;
                     concatened += `[scaledv${i}] [${i}:a] `
                 }
                 
-                concatened += `concat=n=${clips.length}:v=1:a=1 [v] [a]`
+                concatened += `concat=n=${selectedClips.length}:v=1:a=1 [v] [a]`
                 command.push(...sources, '-filter_complex', `${scaled.join(';')};${concatened}`, '-map' ,'[v]' ,'-map', '[a]', 'out.mp4')
                 console.log(command)
                 await ffmpeg.run(...command)
@@ -139,7 +171,7 @@ let token;
                 vid.height = 250
                 video.type= "video/mp4"
                 video.controls = true
-                video.poster = clips[0].thumbnail_url
+                video.poster = selectedClips[0].thumbnail_url
                 document.querySelector('#video').classList.toggle('hidden')
                 ffmpeg.exit()
             }
