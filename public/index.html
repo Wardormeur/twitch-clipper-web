@@ -11,16 +11,16 @@
     <script src="scripts/axios/dist/axios.min.js"></script>
 </head>
 <body class="px-2">
-    <h1 class="text-xl py-2">Create your own twitch clip recap!</h1>
+    <h1 class="text-xl p-4">Create your own twitch clip recap!</h1>
     <a id="connect" href="https://id.twitch.tv/oauth2/authorize?client_id=lykfmi4xw0vec3utrdqvhdimkmz0ci&redirect_uri=http://localhost:8080&response_type=token+id_token&scope=openid">Connect</a>
     <div id="progressbar" class="hidden">
         <span id="progress"></span>
     </div>
     <p id="estimation" class="hidden text-center"></p>
     <div class="grid grid-cols-2">
-        <div class="grid grid-cols-4 gap-4" id="thumbs"></div>
-        <div>
-            <video id="video" class="hidden"></video>
+        <div class="grid grid-cols-4 gap-4 p-4" id="thumbs"></div>
+        <div class="p-4">
+            <video id="video" class="hidden px-2" controls></video>
             <button onclick="showMore()" class="rounded m-2 p-4 bg-green-500 text-white">More clips</button>
             <button onclick="concat()" class="rounded m-2 p-4 bg-green-500 text-white">Generate</button>
         </div>
