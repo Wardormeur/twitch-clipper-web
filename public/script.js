@@ -3,6 +3,8 @@ let pagination;
 let clips = [];
 let user;
 let resolution = '320:180'
+let started_at_index = 1;
+let started_at = luxon.DateTime.now().minus({week: started_at_index}).toISO()
 const ffmpeg = FFmpeg.createFFmpeg({ log: false });
 
 window.onbeforeunload = function () {
@@ -34,10 +36,19 @@ function hideConnect() {
 
 async function showMore() {
     let res = await getClips()
-    let _clips = prepareClips(res.data)
-    pagination = res.pagination
-    generateThumbs(_clips)
-    clips = clips.concat(_clips);
+    if (res.data.length > 0) {
+        let _clips = prepareClips(res.data)
+        pagination = res.pagination
+        generateThumbs(_clips)
+        clips = clips.concat(_clips);
+    } else {
+        started_at_index +=1
+        started_at = luxon.DateTime.now().minus({week: started_at_index}).toISO()
+    }
+    if (!res.pagination.cursor) {
+        started_at_index +=1
+        started_at = luxon.DateTime.now().minus({week: started_at_index}).toISO()
+    }
 }
 
 function getToken(params) {
@@ -124,7 +135,7 @@ async function getClips() {
     const params = {
         broadcaster_id: user,
         first: 20,
-        started_at: luxon.DateTime.now().minus({week: 1}).toISO()
+        started_at,
     };
     if (pagination) params.after = pagination.cursor;
     const res = await axios.get(
