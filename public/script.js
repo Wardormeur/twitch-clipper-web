@@ -70,14 +70,31 @@ function prepareClips(clips) {
         c.proxied_thumbnail_url = `/proxy/${c.numId}.jpg`
         return c;
     }))
-    clips.sort((c1, c2) => new Date(c1.created_at) <= new Date(c2.created_at))
+    clips = clips.sort((c1, c2) => (new Date(c2.created_at)).getTime() - (new Date(c1.created_at)).getTime())
     return clips
 }
 
 function generateThumbs(clips) {
     let thumbs = document.querySelector('#thumbs')
+    let weekContainer;
+    let prevWeek;
     clips.forEach(((c, i) => {
-        container = document.createElement('div')
+        let { weekNumber, year } = luxon.DateTime.fromISO(c.created_at)
+        clipContainer = document.createElement('div')
+        if (weekNumber != prevWeek) {
+            weekContainer = document.querySelector(`#w${weekNumber}-${year}`)
+            if (!weekContainer) {
+                splitter = document.createElement('h3')
+                splitter.textContent = `Week ${weekNumber} of ${year}`
+                splitter.classList.add('text-lg', 'p-4')
+                thumbs.appendChild(splitter)
+                weekContainer = document.createElement('div')
+                weekContainer.id = `w${weekNumber}-${year}`
+                weekContainer.classList.add('grid', 'grid-cols-4', 'gap-4', 'p-4')
+                thumbs.appendChild(weekContainer)
+            }
+            prevWeek = weekNumber
+        }
         video = document.createElement('video')
         input = document.createElement('input')
         label = document.createElement('label')
@@ -97,16 +114,17 @@ function generateThumbs(clips) {
         video.preload = "auto"
         video.poster = c.proxied_thumbnail_url
 
-        container.appendChild(video)
+        clipContainer.appendChild(video)
         label.appendChild(input)
-        container.appendChild(label)
-        thumbs.appendChild(container)
+        clipContainer.appendChild(label)
+        weekContainer.appendChild(clipContainer)
     }))
 }
 async function getClips() {
     const params = {
         broadcaster_id: user,
-        first: 10
+        first: 20,
+        started_at: luxon.DateTime.now().minus({week: 1}).toISO()
     };
     if (pagination) params.after = pagination.cursor;
     const res = await axios.get(
